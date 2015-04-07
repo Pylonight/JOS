@@ -336,6 +336,8 @@ bootmain(void)
     7d12:	89 e5                	mov    %esp,%ebp
     7d14:	56                   	push   %esi
     7d15:	53                   	push   %ebx
+	// well, but we don`t have a cprintf until after init. lol
+
 	struct Proghdr *ph, *eph;
 
 	// read 1st page off disk
