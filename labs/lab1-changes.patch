@@ -1,0 +1,218 @@
+diff -u -r lab1_uc/boot/main.c lab1/boot/main.c
+--- lab1_uc/boot/main.c	2007-09-07 09:21:33.000000000 +0800
++++ lab1/boot/main.c	2015-04-06 22:21:15.162570502 +0800
+@@ -38,6 +38,11 @@
+ void
+ bootmain(void)
+ {
++	// test "hello world" which is "he110 world" indeed
++	//unsigned int i = 0x00646c72;
++	//cprintf("H%x Wo%s", 57616, &i);
++	// well, but we don`t have a cprintf until after init. lol
++
+ 	struct Proghdr *ph, *eph;
+ 
+ 	// read 1st page off disk
+diff -u -r lab1_uc/boot/Makefrag lab1/boot/Makefrag
+--- lab1_uc/boot/Makefrag	2007-09-07 09:21:33.000000000 +0800
++++ lab1/boot/Makefrag	2015-04-07 13:12:19.090647239 +0800
+@@ -27,6 +27,6 @@
+ 	@echo + ld boot/boot
+ 	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 -o $@.out $^
+ 	$(V)$(OBJDUMP) -S $@.out >$@.asm
+-	$(V)$(OBJCOPY) -S -O binary $@.out $@
++	$(V)$(OBJCOPY) -S -R ".eh_frame" -O binary $@.out $@
+ 	$(V)perl boot/sign.pl $(OBJDIR)/boot/boot
+ 
+diff -u -r lab1_uc/kern/console.c lab1/kern/console.c
+--- lab1_uc/kern/console.c	2007-09-07 09:21:33.000000000 +0800
++++ lab1/kern/console.c	2015-04-07 19:47:26.147509511 +0800
+@@ -83,7 +83,7 @@
+ // For information on PC parallel port programming, see the class References
+ // page.
+ 
+-// Stupid I/O delay routine necessitated by historical PC design flaws
++// Stupid I/O delay routine necessitated by historical PC design flaws. lol
+ static void
+ delay(void)
+ {
+@@ -148,9 +148,11 @@
+ cga_putc(int c)
+ {
+ 	// if no attribute given, then use black on white
++	// whether are 15-8 bits zero?If they are set 8,9,10 bit 1,If not continue.
+ 	if (!(c & ~0xFF))
+-		c |= 0x0700;
++		c |= 0x0a00;
+ 
++	// whether are low 8 bits '\b','\n','\r','\t'?If they are,preform corresponding operation.
+ 	switch (c & 0xff) {
+ 	case '\b':
+ 		if (crt_pos > 0) {
+@@ -171,6 +173,80 @@
+ 		cons_putc(' ');
+ 		cons_putc(' ');
+ 		break;
++	case '0':
++	case '1':
++	case '2':
++	case '3':
++	case '4':
++	case '5':
++	case '6':
++	case '7':
++	case '8':
++	case '9':
++		crt_buf[crt_pos++] = (c&0xf0ff)|0x0c00;
++		break;
++	case 'a':
++	case 'b':
++	case 'c':
++	case 'd':
++	case 'e':
++	case 'f':
++	case 'g':
++	case 'h':
++	case 'i':
++	case 'j':
++	case 'k':
++	case 'l':
++	case 'm':
++	case 'n':
++	case 'o':
++	case 'p':
++	case 'q':
++	case 'r':
++	case 's':
++	case 't':
++	case 'u':
++	case 'v':
++	case 'w':
++	case 'x':
++	case 'y':
++	case 'z':
++		crt_buf[crt_pos++] = (c&0xf0ff)|0x0900;
++		break;
++	case 'A':
++	case 'B':
++	case 'C':
++	case 'D':
++	case 'E':
++	case 'F':
++	case 'G':
++	case 'H':
++	case 'I':
++	case 'J':
++	case 'K':
++	case 'L':
++	case 'M':
++	case 'N':
++	case 'O':
++	case 'P':
++	case 'Q':
++	case 'R':
++	case 'S':
++	case 'T':
++	case 'U':
++	case 'V':
++	case 'W':
++	case 'X':
++	case 'Y':
++	case 'Z':
++		crt_buf[crt_pos++] = (c&0xf0ff)|0x0100;
++		break;
++	case '%':
++		crt_buf[crt_pos++] = (c&0xf0ff)|0x0e00;
++		break;
++	case '&':
++		crt_buf[crt_pos++] = (c&0xf0ff)|0x0d00;
++		break;
+ 	default:
+ 		crt_buf[crt_pos++] = c;		/* write the character */
+ 		break;
+@@ -179,10 +255,12 @@
+ 	// What is the purpose of this?
+ 	if (crt_pos >= CRT_SIZE) {
+ 		int i;
+-
++		// Move all chars on the screen above a line;(memcpy or memmove: memcpy(dst, src, size))[Comment this line, the screen will never roll for new info]
+ 		memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
++		// Set the bottom line empty;(0x0700 is for color using)[Comment out this line and the bottom line will be nearly the same as the above line]
+ 		for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
+-			crt_buf[i] = 0x0700 | ' ';
++			crt_buf[i] = 0x0c00 | ' ';
++		// Fix the position of screen;[Comment out this line and the screen will turn pure black]
+ 		crt_pos -= CRT_COLS;
+ 	}
+ 
+diff -u -r lab1_uc/kern/init.c lab1/kern/init.c
+--- lab1_uc/kern/init.c	2007-09-07 09:21:33.000000000 +0800
++++ lab1/kern/init.c	2015-04-07 21:01:41.943671584 +0800
+@@ -35,10 +35,11 @@
+ 
+ 	cprintf("6828 decimal is %o octal!\n", 6828);
+ 
+-
+-
+-
+-
++	// test "hello world" which is "he110 world" indeed
++	//unsigned int i = 0x00646c72;
++	//cprintf("H%x Wo%s\n", 57616, &i);
++	// seems that it won`t work, because I never see 6828 on the screen.
++	// okay, it is the problem caused by wrong version of bochs. Maybe another way to handle?
+ 
+ 
+ 	// Test the stack backtrace function (lab 1 only)
+diff -u -r lab1_uc/kern/monitor.c lab1/kern/monitor.c
+--- lab1_uc/kern/monitor.c	2007-09-07 09:21:33.000000000 +0800
++++ lab1/kern/monitor.c	2015-04-07 21:32:13.503738194 +0800
+@@ -23,6 +23,7 @@
+ static struct Command commands[] = {
+ 	{ "help", "Display this list of commands", mon_help },
+ 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
++	{ "backtrace", "Display information about the stack", mon_backtrace},
+ };
+ #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
+ 
+@@ -59,6 +60,15 @@
+ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+ {
+ 	// Your code here.
++	unsigned int ebp = read_ebp();
++	cprintf("Stack backtrace:\n");
++	// in entry.S, ebp is set to be zero before calling i386_init.
++	while (ebp != 0)
++	{
++		cprintf("  ebp %08x  eip %08x  args %08x %08x %08x %08x\n", ebp, *((unsigned int *)ebp+1), *((unsigned int *)ebp+2),
++			*((unsigned int *)ebp+3), *((unsigned int *)ebp+4), *((unsigned int *)ebp+5));
++		ebp = *(unsigned int *)ebp;
++	}
+ 	return 0;
+ }
+ 
+diff -u -r lab1_uc/lib/printfmt.c lab1/lib/printfmt.c
+--- lab1_uc/lib/printfmt.c	2007-09-07 09:21:33.000000000 +0800
++++ lab1/lib/printfmt.c	2015-04-07 19:31:37.587475011 +0800
+@@ -207,10 +207,16 @@
+ 		// (unsigned) octal
+ 		case 'o':
+ 			// Replace this with your code.
+-			putch('X', putdat);
+-			putch('X', putdat);
+-			putch('X', putdat);
+-			break;
++			// putch('X', putdat);
++			// putch('X', putdat);
++			// putch('X', putdat);
++			num = getint(&ap, lflag);
++			if ((long long) num < 0) {
++				putch('-', putdat);
++				num = -(long long) num;
++			}
++			base = 8;
++			goto number;
+ 
+ 		// pointer
+ 		case 'p':
+Only in lab1: obj

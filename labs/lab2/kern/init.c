@@ -31,10 +31,11 @@ i386_init(void)
 	i386_vm_init();
 
 
-
-
-
-
+	// test "hello world" which is "he110 world" indeed
+	//unsigned int i = 0x00646c72;
+	//cprintf("H%x Wo%s\n", 57616, &i);
+	// seems that it won`t work, because I never see 6828 on the screen.
+	// okay, it is the problem caused by wrong version of bochs. Maybe another way to handle?
 
 	// Drop into the kernel monitor.
 	while (1)
