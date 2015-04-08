@@ -199,7 +199,9 @@ i386_vm_init(void)
 	//    - pages -- kernel RW, user NONE
 	//    - the read-only version mapped at UPAGES -- kernel R, user R
 	// Your code goes here:
-
+	// [UPAGES, sizeof(PAGES) ] => [pages, sizeof(PAGES)]
+	n = ROUNDUP(npage*sizeof(struct Page), PGSIZE);
+	boot_map_segment(pgdir, UPAGES, n, PADDR(pages), PTE_U | PTE_P);
 
 
 	//////////////////////////////////////////////////////////////////////
@@ -210,6 +212,8 @@ i386_vm_init(void)
 	//     * [KSTACKTOP-PTSIZE, KSTACKTOP-KSTKSIZE) -- not backed => faults
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
+	// [KSTACKTOP – KSTKSIZE, 8] => [bootstack, 8]
+	boot_map_segment(pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W | PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE. 
@@ -219,6 +223,8 @@ i386_vm_init(void)
 	// we just set up the amapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here: 
+	// [KERNBASE, pages in the memory] => [0, pages in the memory]
+	boot_map_segment(pgdir, KERNBASE, 0xffffffff-KERNBASE+1, 0, PTE_W | PTE_P);
 
 	// Check that the initial page directory has been set up correctly.
 	check_boot_pgdir();
@@ -456,7 +462,7 @@ page_init(void)
 	// the second method, slow
 	// but can edit the .ref to 1
 	pages[0].pp_ref = 1;
-	// remove the first page
+	// remove the first page, where holds Real Mode IDT
 	LIST_REMOVE(&pages[0], pp_link);
 	// remove IO hole and kernel, they are tightly connected
 	// notice boot_freemem points to the next byte of free mem, and points to higher mem!
@@ -503,6 +509,8 @@ page_alloc(struct Page **pp_store)
 		*pp_store = LIST_FIRST(&page_free_list);
 		// remove the obtained page in page_free_list
 		LIST_REMOVE(*pp_store, pp_link);
+		// init the page structure
+		page_initpp(*pp_store);
 		return 0;
 	}
 	else
@@ -525,7 +533,6 @@ page_free(struct Page *pp)
 	}
 	else
 	{
-		page_initpp(pp);
 		LIST_INSERT_HEAD(&page_free_list, pp, pp_link);
 	}
 }
@@ -558,8 +565,7 @@ pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
 	// Fill this function in
-	// I highly recommand to call it "pge_t"
-	// but, it is a page table after all
+	// page table entry
 	pte_t *pt_addr;
 	// new_pg doesn't need an initialization, because
 	// it will be casted to the existing space
@@ -572,8 +578,8 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 		// and page dir is a page itself, so PTE_ADDR is
 		// needed to get the addr of phys page va pointing to.
 		// that is the addr of page table
-		// remember, pt_addr is still a va
-		// we got pa through va, and got va through pa.
+		// remember, pt_addr is a ptr to pte
+		// we got ptr to pte through va, and got va through ptr to pte.
 		pt_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
 		// now it's time to get final pa through va
 		// and remember, pt_addr is an array of pointer to phsy pages
@@ -591,14 +597,21 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 			if (page_alloc(&new_pt) == 0)
 			{
 				new_pt->pp_ref = 1;
-				// memset(KADDR(page2pa(pg)), 0, PGSIZE);
+				// new page table need to be cleared or a "pa2page" panic
+				// or an assertion failed about "check that new page tables get cleared"
+				memset(KADDR(page2pa(new_pt)), 0, PGSIZE);
 				// update the pgdir
 				// P, present in the memory
 				// W, writable; U, user
-				pgdir[PDX(va)] = page2pa(pg) | PTE_P | PTE_W | PTE_U;
+				// PTE_U must be here; or GP arises when debuggin user process
+				pgdir[PDX(va)] = page2pa(new_pt) | PTE_P | PTE_W | PTE_U;
 				// then the same with the condition when page table exists in the dir
 				pt_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
 				return &pt_addr[PTX(va)];
+			}
+			else
+			{
+				return NULL;
 			}
 		}
 	}
@@ -627,7 +640,31 @@ int
 page_insert(pde_t *pgdir, struct Page *pp, void *va, int perm) 
 {
 	// Fill this function in
-	return 0;
+	// always create a new page table if there isn't
+	// which is "necessary, on demand" in the comment
+	pte_t *pt_addr = pgdir_walk(pgdir, va, 1);
+	if (pt_addr == NULL)
+	{
+		return -E_NO_MEM;
+	}
+	else
+	{
+		// increase pp_ref as insertion succeeds
+		++(pp->pp_ref);
+		// REMEMBER, pt_addr is a ptr to pte
+		// *pt_addr will get the value addressed at pt_addr
+		// already a page mapped at va, remove it
+		if ((*pt_addr & PTE_P) != 0)
+		{
+			page_remove(pgdir, va);
+			// The TLB must be invalidated 
+			// if a page was formerly present at 'va'.
+			tlb_invalidate(pgdir, va);
+		}
+		// again, through pt_addr we should get pa
+		*pt_addr = page2pa(pp) | perm | PTE_P;
+		return 0;
+	}
 }
 
 //
@@ -646,19 +683,27 @@ boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, physaddr_t pa, int per
 	// Fill this function in
 	// better than int i; no worry about overflow.
 	unsigned int i;
-	pte_t *pg_addr;
+	pte_t *pt_addr;
 	// size in stack, no worry.
 	size = ROUNDUP(size, PGSIZE);
+	// so there comes the question
+	// if those la has been allocated, what will happen?
+	// i guess that, the answer is, the condition above will
+	// never be reached. the reason is that it is called by boot,
+	// there should not be any protected la allocated, and
+	// the os programmer should be very careful so that 
+	// covering allocating won't happen.
+	// And what's more, it seems that pa need to be ROUNDUP?
 	for (i = 0; i < size; i += PGSIZE)
 	{
 		// get the page addr
-		pg_addr = pgdir_walk(pgdir, (void *)(la+i), 1);
-		if (pg_addr == NULL)
+		pt_addr = pgdir_walk(pgdir, (void *)(la+i), 1);
+		if (pt_addr == NULL)
 		{
 			panic("failed to map la to pa in boot_map_segment()");
 		}
 		// map the phsy addr
-		*pg_addr = (pa+i) | perm | PTE_P;
+		*pt_addr = (pa+i) | perm | PTE_P;
 	}
 }
 
@@ -676,23 +721,25 @@ struct Page *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-	// never create a new page
-	pte_t *pg_addr = pgdir_walk(pgdir, va, 0);
-	if (pg_addr == NULL)
+	// never create a new page table
+	pte_t *pt_addr = pgdir_walk(pgdir, va, 0);
+	if (pt_addr == NULL)
 	{
-		return NULL
+		return NULL;
 	}
 	else
 	{
 		if (pte_store)
 		{
 			// be careful to read the header comment
-			*pte_store = pg_addr;
+			*pte_store = pt_addr;
 		}
-		// pg_addr is pa, not phsy page addr
-		// but it should be the same as pg_addr
-		// is the start addr of a page
-		return pa2page(pg_addr);
+		// pt_addr is ptr to pte, not phsy page addr
+		// we need to get pa through ptr to pte, (* is okay)
+		// and then get PPN through pa (1), and get page addr
+		// through PPN (2); (1) and (2) are done by "pa2page"
+		return pa2page(*pt_addr);
+		// "pa2page(phsyaddr_t pa)" returns &pages[PPN(pa)];
 	}
 }
 
@@ -715,10 +762,29 @@ void
 page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
-	// the page to unmap
-	pte_t *pg2um;
-	// the page found
-	struct Page *pg = page_lookup(pgdir, va, &pg2um);
+	// the corresponding pte to set
+	pte_t *pt2set;
+	// the page found and to unmap
+	// and &pg2um is an addr and never equal to 0
+	// or it will crash IDT
+	struct Page *pg = page_lookup(pgdir, va, &pt2set);
+	if (pg == NULL)
+	{
+		// silently do nothing
+		// keep this brace in case to extend
+		// return written here will be better
+		// in case to add something in the bottom
+		return;
+	}
+	else
+	{
+		// --ref and if ref == 0 then page_free it
+		page_decref(pg);
+		// set the pte to zero as asked
+		// if code runs here, pte must exist, as pg exists
+		*pt2set = 0;
+		tlb_invalidate(pgdir, va);
+	}
 }
 
 //
@@ -888,4 +954,3 @@ page_check(void)
 	
 	cprintf("page_check() succeeded!\n");
 }
-
