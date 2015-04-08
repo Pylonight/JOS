@@ -61,13 +61,38 @@ int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
 	// Your code here.
-	unsigned int ebp = read_ebp();
+	unsigned int ebp;
+	unsigned int eip;
+	struct Eipdebuginfo debug_info;
+	int i;	// loop
+
 	cprintf("Stack backtrace:\n");
+	// current eip and print current function.
+	// cprintf is a function so init after it in case.
+	eip = read_eip();
+	ebp = read_ebp();
+
 	// in entry.S, ebp is set to be zero before calling i386_init.
 	while (ebp != 0)
 	{
+		if (debuginfo_eip(eip, &debug_info) >= 0)
+		{
+			cprintf("%s:%d: ", debug_info.eip_file, debug_info.eip_line);
+			for (i = 0; i < debug_info.eip_fn_namelen; ++i)
+			{
+				cprintf("%c", debug_info.eip_fn_name[i]);
+			}
+			cprintf("+%x -%d\n", eip-debug_info.eip_fn_addr, debug_info.eip_fn_narg);
+		}
+		else
+		{
+			cprintf("debuginfo_eip() failed\n");
+			return -1;
+		}
+
 		cprintf("  ebp %08x  eip %08x  args %08x %08x %08x %08x\n", ebp, *((unsigned int *)ebp+1), *((unsigned int *)ebp+2),
 			*((unsigned int *)ebp+3), *((unsigned int *)ebp+4), *((unsigned int *)ebp+5));
+		eip = *((unsigned int *)ebp+1);
 		ebp = *(unsigned int *)ebp;
 	}
 	return 0;

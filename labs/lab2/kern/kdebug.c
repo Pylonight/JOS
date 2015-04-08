@@ -157,6 +157,9 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 		if (stabs[lfun].n_strx < stabstr_end - stabstr)
 			info->eip_fn_name = stabstr + stabs[lfun].n_strx;
 		info->eip_fn_addr = stabs[lfun].n_value;
+		// This "n_value" is the function's first addr, but when it comes to SLINE,
+		// "n_value" describes the offset, so we need to minus "n_value" fro addr
+		// to get the offset of the line.
 		addr -= info->eip_fn_addr;
 		// Search within the function definition for the line number.
 		lline = lfun;
@@ -181,8 +184,13 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 	//	Look at the STABS documentation and <inc/stab.h> to find
 	//	which one.
 	// Your code here.
+	stab_binsearch(stabs, &lline, &rline, N_SLINE, addr);
+	info->eip_line = stabs[lline].n_desc;
+	if (rline < lline)
+	{
+		info->eip_line = -1;
+	}
 
-	
 	// Search backwards from the line number for the relevant filename
 	// stab.
 	// We can't just use the "lfile" stab because inlined functions
@@ -199,6 +207,14 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 	// Set eip_fn_narg to the number of arguments taken by the function,
 	// or 0 if there was no containing function.
 	// Your code here.
+	int i;	// loop
+	for (i = lfun; i <= rfun; ++i)
+	{
+		if (stabs[i].n_type == N_PSYM)
+		{
+			++(info->eip_fn_narg);
+		}
+	}
 
 	
 	return 0;

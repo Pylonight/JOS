@@ -118,11 +118,13 @@ boot_alloc(uint32_t n, uint32_t align)
 
 	// LAB 2: Your code here:
 	//	Step 1: round boot_freemem up to be aligned properly
+	boot_freemem = ROUNDUP(boot_freemem, align);
 	//	Step 2: save current value of boot_freemem as allocated chunk
+	v = boot_freemem;
 	//	Step 3: increase boot_freemem to record allocation
+	boot_freemem += ROUNDUP(n, align);
 	//	Step 4: return allocated chunk
-
-	return NULL;
+	return v;
 }
 
 // Set up a two-level page table:
@@ -145,7 +147,7 @@ i386_vm_init(void)
 	size_t n;
 
 	// Delete this line:
-	panic("i386_vm_init: This function is not finished\n");
+	//panic("i386_vm_init: This function is not finished\n");
 
 	//////////////////////////////////////////////////////////////////////
 	// create initial page directory.
@@ -174,7 +176,7 @@ i386_vm_init(void)
 	// programs will get read-only access to the array as well.
 	// You must allocate the array yourself.
 	// Your code goes here: 
-
+	pages = (struct Page *)boot_alloc(npage*sizeof(struct Page), PGSIZE);
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -436,6 +438,34 @@ page_init(void)
 		pages[i].pp_ref = 0;
 		LIST_INSERT_HEAD(&page_free_list, &pages[i], pp_link);
 	}
+
+	// // the first method, fast
+	// // but cannot edit the .ref to 1
+	// // link from high addr to low addr
+	// extern char end[];
+	// // eliminate first page
+	// pages[1].pp_link = NULL;
+	// // eliminate IO hole and kernel(tightly connected)
+	// struct Page *pgstart = pa2page((physaddr_t)IOPHYSMEM);
+	// struct Page *pgend = pa2page((physaddr_t)(PADDR(end)+PGSIZE+npage*sizeof(struct Page)));
+	// // Will the multiply operation overflow? No! Because the result < memory_size
+	// ++pgend;	// protect the last piece of pg
+	// --pgstart;	// protect IOPHYSMEM
+	// pgend->pp_link = pgstart;
+
+	// the second method, slow
+	// but can edit the .ref to 1
+	pages[0].pp_ref = 1;
+	// remove the first page
+	LIST_REMOVE(&pages[0], pp_link);
+	// remove IO hole and kernel, they are tightly connected
+	// notice boot_freemem points to the next byte of free mem, and points to higher mem!
+	// so after the last calling "boot_alloc", boot_freemem remains the addr of the end addr of kernel pages plus 1
+	for (i = IOPHYSMEM; i < PADDR((unsigned int) boot_freemem); i += PGSIZE)
+	{
+		pages[i / PGSIZE].pp_ref = 1;
+		LIST_REMOVE(&pages[i / PGSIZE], pp_link);
+	}
 }
 
 //
@@ -467,7 +497,18 @@ int
 page_alloc(struct Page **pp_store)
 {
 	// Fill this function in
-	return -E_NO_MEM;
+	if (LIST_FIRST(&page_free_list) != NULL)
+	{
+		// obtain the first page in page_free_list
+		*pp_store = LIST_FIRST(&page_free_list);
+		// remove the obtained page in page_free_list
+		LIST_REMOVE(*pp_store, pp_link);
+		return 0;
+	}
+	else
+	{
+		return -E_NO_MEM;
+	}
 }
 
 //
@@ -477,7 +518,16 @@ page_alloc(struct Page **pp_store)
 void
 page_free(struct Page *pp)
 {
-	// Fill this function in
+	if (pp->pp_ref)
+	{
+		// in case
+		panic("pp->pp_ref != 0, but page_free called");
+	}
+	else
+	{
+		page_initpp(pp);
+		LIST_INSERT_HEAD(&page_free_list, pp, pp_link);
+	}
 }
 
 //
@@ -508,7 +558,50 @@ pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
 	// Fill this function in
-	return NULL;
+	// I highly recommand to call it "pge_t"
+	// but, it is a page table after all
+	pte_t *pt_addr;
+	// new_pg doesn't need an initialization, because
+	// it will be casted to the existing space
+	struct Page *new_pt;
+	// attention to the priority of operations
+	// PTE_P means whether it is there in memory
+	if ((pgdir[PDX(va)] & PTE_P) != 0)
+	{
+		// va is la now, PDX(va) means page dir addr.
+		// and page dir is a page itself, so PTE_ADDR is
+		// needed to get the addr of phys page va pointing to.
+		// that is the addr of page table
+		// remember, pt_addr is still a va
+		// we got pa through va, and got va through pa.
+		pt_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
+		// now it's time to get final pa through va
+		// and remember, pt_addr is an array of pointer to phsy pages
+		return &pt_addr[PTX(va)];
+	}
+	else
+	{
+		if (create == 0)
+		{
+			return NULL;
+		}
+		else
+		{
+			// allocate a new page table
+			if (page_alloc(&new_pt) == 0)
+			{
+				new_pt->pp_ref = 1;
+				// memset(KADDR(page2pa(pg)), 0, PGSIZE);
+				// update the pgdir
+				// P, present in the memory
+				// W, writable; U, user
+				pgdir[PDX(va)] = page2pa(pg) | PTE_P | PTE_W | PTE_U;
+				// then the same with the condition when page table exists in the dir
+				pt_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
+				return &pt_addr[PTX(va)];
+			}
+		}
+	}
 }
 
 //
@@ -551,6 +644,22 @@ static void
 boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, physaddr_t pa, int perm)
 {
 	// Fill this function in
+	// better than int i; no worry about overflow.
+	unsigned int i;
+	pte_t *pg_addr;
+	// size in stack, no worry.
+	size = ROUNDUP(size, PGSIZE);
+	for (i = 0; i < size; i += PGSIZE)
+	{
+		// get the page addr
+		pg_addr = pgdir_walk(pgdir, (void *)(la+i), 1);
+		if (pg_addr == NULL)
+		{
+			panic("failed to map la to pa in boot_map_segment()");
+		}
+		// map the phsy addr
+		*pg_addr = (pa+i) | perm | PTE_P;
+	}
 }
 
 //
@@ -567,7 +676,24 @@ struct Page *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-	return NULL;
+	// never create a new page
+	pte_t *pg_addr = pgdir_walk(pgdir, va, 0);
+	if (pg_addr == NULL)
+	{
+		return NULL
+	}
+	else
+	{
+		if (pte_store)
+		{
+			// be careful to read the header comment
+			*pte_store = pg_addr;
+		}
+		// pg_addr is pa, not phsy page addr
+		// but it should be the same as pg_addr
+		// is the start addr of a page
+		return pa2page(pg_addr);
+	}
 }
 
 //
@@ -589,6 +715,10 @@ void
 page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
+	// the page to unmap
+	pte_t *pg2um;
+	// the page found
+	struct Page *pg = page_lookup(pgdir, va, &pg2um);
 }
 
 //
