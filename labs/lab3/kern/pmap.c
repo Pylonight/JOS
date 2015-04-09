@@ -119,11 +119,13 @@ boot_alloc(uint32_t n, uint32_t align)
 
 	// LAB 2: Your code here:
 	//	Step 1: round boot_freemem up to be aligned properly
+	boot_freemem = ROUNDUP(boot_freemem, align);
 	//	Step 2: save current value of boot_freemem as allocated chunk
+	v = boot_freemem;
 	//	Step 3: increase boot_freemem to record allocation
+	boot_freemem += ROUNDUP(n, align);
 	//	Step 4: return allocated chunk
-
-	return NULL;
+	return v;
 }
 
 // Set up a two-level page table:
@@ -146,7 +148,7 @@ i386_vm_init(void)
 	size_t n;
 
 	// Delete this line:
-	panic("i386_vm_init: This function is not finished\n");
+	//panic("i386_vm_init: This function is not finished\n");
 
 	//////////////////////////////////////////////////////////////////////
 	// create initial page directory.
@@ -175,11 +177,12 @@ i386_vm_init(void)
 	// programs will get read-only access to the array as well.
 	// You must allocate the array yourself.
 	// Your code goes here: 
-
+	pages = (struct Page *)boot_alloc(npage*sizeof(struct Page), PGSIZE);
 
 	//////////////////////////////////////////////////////////////////////
 	// Make 'envs' point to an array of size 'NENV' of 'struct Env'.
 	// LAB 3: Your code here.
+	envs = (struct Env *)boot_alloc(NENV*sizeof(struct Env), PGSIZE);
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -202,6 +205,9 @@ i386_vm_init(void)
 	//    - pages -- kernel RW, user NONE
 	//    - the read-only version mapped at UPAGES -- kernel R, user R
 	// Your code goes here:
+	// [UPAGES, sizeof(PAGES) ] => [pages, sizeof(PAGES)]
+	n = ROUNDUP(npage*sizeof(struct Page), PGSIZE);
+	boot_map_segment(pgdir, UPAGES, n, PADDR(pages), PTE_U | PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
 	// Map the 'envs' array read-only by the user at linear address UENVS
@@ -209,7 +215,9 @@ i386_vm_init(void)
 	// Permissions:
 	//    - envs itself -- kernel RW, user NONE
 	//    - the image of envs mapped at UENVS  -- kernel R, user R
-
+	// Lab3: Your code goes here:
+	n = ROUNDUP(NENV*sizeof(struct Env), PGSIZE);
+	boot_map_segment(pgdir, UENVS, n, PADDR(envs), PTE_U | PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
 	// Map the kernel stack (symbol name "bootstack").  The complete VA
@@ -219,6 +227,8 @@ i386_vm_init(void)
 	//     * [KSTACKTOP-PTSIZE, KSTACKTOP-KSTKSIZE) -- not backed => faults
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
+	// [KSTACKTOP – KSTKSIZE, 8] => [bootstack, 8]
+	boot_map_segment(pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W | PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE. 
@@ -228,6 +238,8 @@ i386_vm_init(void)
 	// we just set up the amapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here: 
+	// [KERNBASE, pages in the memory] => [0, pages in the memory]
+	boot_map_segment(pgdir, KERNBASE, 0xffffffff-KERNBASE+1, 0, PTE_W | PTE_P);
 
 	// Check that the initial page directory has been set up correctly.
 	check_boot_pgdir();
@@ -452,6 +464,34 @@ page_init(void)
 		pages[i].pp_ref = 0;
 		LIST_INSERT_HEAD(&page_free_list, &pages[i], pp_link);
 	}
+
+	// // the first method, fast
+	// // but cannot edit the .ref to 1
+	// // link from high addr to low addr
+	// extern char end[];
+	// // eliminate first page
+	// pages[1].pp_link = NULL;
+	// // eliminate IO hole and kernel(tightly connected)
+	// struct Page *pgstart = pa2page((physaddr_t)IOPHYSMEM);
+	// struct Page *pgend = pa2page((physaddr_t)(PADDR(end)+PGSIZE+npage*sizeof(struct Page)));
+	// // Will the multiply operation overflow? No! Because the result < memory_size
+	// ++pgend;	// protect the last piece of pg
+	// --pgstart;	// protect IOPHYSMEM
+	// pgend->pp_link = pgstart;
+
+	// the second method, slow
+	// but can edit the .ref to 1
+	pages[0].pp_ref = 1;
+	// remove the first page, where holds Real Mode IDT
+	LIST_REMOVE(&pages[0], pp_link);
+	// remove IO hole and kernel, they are tightly connected
+	// notice boot_freemem points to the next byte of free mem, and points to higher mem!
+	// so after the last calling "boot_alloc", boot_freemem remains the addr of the end addr of kernel pages plus 1
+	for (i = IOPHYSMEM; i < PADDR((unsigned int) boot_freemem); i += PGSIZE)
+	{
+		pages[i / PGSIZE].pp_ref = 1;
+		LIST_REMOVE(&pages[i / PGSIZE], pp_link);
+	}
 }
 
 //
@@ -483,7 +523,20 @@ int
 page_alloc(struct Page **pp_store)
 {
 	// Fill this function in
-	return -E_NO_MEM;
+	if (LIST_FIRST(&page_free_list) != NULL)
+	{
+		// obtain the first page in page_free_list
+		*pp_store = LIST_FIRST(&page_free_list);
+		// remove the obtained page in page_free_list
+		LIST_REMOVE(*pp_store, pp_link);
+		// init the page structure
+		page_initpp(*pp_store);
+		return 0;
+	}
+	else
+	{
+		return -E_NO_MEM;
+	}
 }
 
 //
@@ -493,7 +546,15 @@ page_alloc(struct Page **pp_store)
 void
 page_free(struct Page *pp)
 {
-	// Fill this function in
+	if (pp->pp_ref)
+	{
+		// in case
+		panic("pp->pp_ref != 0, but page_free called");
+	}
+	else
+	{
+		LIST_INSERT_HEAD(&page_free_list, pp, pp_link);
+	}
 }
 
 //
@@ -524,7 +585,56 @@ pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
 	// Fill this function in
-	return NULL;
+	// page table entry
+	pte_t *pt_addr;
+	// new_pg doesn't need an initialization, because
+	// it will be casted to the existing space
+	struct Page *new_pt;
+	// attention to the priority of operations
+	// PTE_P means whether it is there in memory
+	if ((pgdir[PDX(va)] & PTE_P) != 0)
+	{
+		// va is la now, PDX(va) means page dir addr.
+		// and page dir is a page itself, so PTE_ADDR is
+		// needed to get the addr of phys page va pointing to.
+		// that is the addr of page table
+		// remember, pt_addr is a ptr to pte
+		// we got ptr to pte through va, and got va through ptr to pte.
+		pt_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
+		// now it's time to get final pa through va
+		// and remember, pt_addr is an array of pointer to phsy pages
+		return &pt_addr[PTX(va)];
+	}
+	else
+	{
+		if (create == 0)
+		{
+			return NULL;
+		}
+		else
+		{
+			// allocate a new page table
+			if (page_alloc(&new_pt) == 0)
+			{
+				new_pt->pp_ref = 1;
+				// new page table need to be cleared or a "pa2page" panic
+				// or an assertion failed about "check that new page tables get cleared"
+				memset(KADDR(page2pa(new_pt)), 0, PGSIZE);
+				// update the pgdir
+				// P, present in the memory
+				// W, writable; U, user
+				// PTE_U must be here; or GP arises when debuggin user process
+				pgdir[PDX(va)] = page2pa(new_pt) | PTE_P | PTE_W | PTE_U;
+				// then the same with the condition when page table exists in the dir
+				pt_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
+				return &pt_addr[PTX(va)];
+			}
+			else
+			{
+				return NULL;
+			}
+		}
+	}
 }
 
 //
@@ -550,7 +660,31 @@ int
 page_insert(pde_t *pgdir, struct Page *pp, void *va, int perm) 
 {
 	// Fill this function in
-	return 0;
+	// always create a new page table if there isn't
+	// which is "necessary, on demand" in the comment
+	pte_t *pt_addr = pgdir_walk(pgdir, va, 1);
+	if (pt_addr == NULL)
+	{
+		return -E_NO_MEM;
+	}
+	else
+	{
+		// increase pp_ref as insertion succeeds
+		++(pp->pp_ref);
+		// REMEMBER, pt_addr is a ptr to pte
+		// *pt_addr will get the value addressed at pt_addr
+		// already a page mapped at va, remove it
+		if ((*pt_addr & PTE_P) != 0)
+		{
+			page_remove(pgdir, va);
+			// The TLB must be invalidated 
+			// if a page was formerly present at 'va'.
+			tlb_invalidate(pgdir, va);
+		}
+		// again, through pt_addr we should get pa
+		*pt_addr = page2pa(pp) | perm | PTE_P;
+		return 0;
+	}
 }
 
 //
@@ -567,6 +701,30 @@ static void
 boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, physaddr_t pa, int perm)
 {
 	// Fill this function in
+	// better than int i; no worry about overflow.
+	unsigned int i;
+	pte_t *pt_addr;
+	// size in stack, no worry.
+	size = ROUNDUP(size, PGSIZE);
+	// so there comes the question
+	// if those la has been allocated, what will happen?
+	// i guess that, the answer is, the condition above will
+	// never be reached. the reason is that it is called by boot,
+	// there should not be any protected la allocated, and
+	// the os programmer should be very careful so that 
+	// covering allocating won't happen.
+	// And what's more, it seems that pa need to be ROUNDUP?
+	for (i = 0; i < size; i += PGSIZE)
+	{
+		// get the page addr
+		pt_addr = pgdir_walk(pgdir, (void *)(la+i), 1);
+		if (pt_addr == NULL)
+		{
+			panic("failed to map la to pa in boot_map_segment()");
+		}
+		// map the phsy addr
+		*pt_addr = (pa+i) | perm | PTE_P;
+	}
 }
 
 //
@@ -583,7 +741,26 @@ struct Page *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-	return NULL;
+	// never create a new page table
+	pte_t *pt_addr = pgdir_walk(pgdir, va, 0);
+	if (pt_addr == NULL)
+	{
+		return NULL;
+	}
+	else
+	{
+		if (pte_store)
+		{
+			// be careful to read the header comment
+			*pte_store = pt_addr;
+		}
+		// pt_addr is ptr to pte, not phsy page addr
+		// we need to get pa through ptr to pte, (* is okay)
+		// and then get PPN through pa (1), and get page addr
+		// through PPN (2); (1) and (2) are done by "pa2page"
+		return pa2page(*pt_addr);
+		// "pa2page(phsyaddr_t pa)" returns &pages[PPN(pa)];
+	}
 }
 
 //
@@ -605,6 +782,29 @@ void
 page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
+	// the corresponding pte to set
+	pte_t *pt2set;
+	// the page found and to unmap
+	// and &pg2um is an addr and never equal to 0
+	// or it will crash IDT
+	struct Page *pg = page_lookup(pgdir, va, &pt2set);
+	if (pg == NULL)
+	{
+		// silently do nothing
+		// keep this brace in case to extend
+		// return written here will be better
+		// in case to add something in the bottom
+		return;
+	}
+	else
+	{
+		// --ref and if ref == 0 then page_free it
+		page_decref(pg);
+		// set the pte to zero as asked
+		// if code runs here, pte must exist, as pg exists
+		*pt2set = 0;
+		tlb_invalidate(pgdir, va);
+	}
 }
 
 //
@@ -818,4 +1018,3 @@ page_check(void)
 	
 	cprintf("page_check() succeeded!\n");
 }
-
