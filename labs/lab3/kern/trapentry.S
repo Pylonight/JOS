@@ -47,8 +47,7 @@
 	TRAPHANDLER_NOEC(overflow, T_OFLOW)
 	TRAPHANDLER_NOEC(bound_check, T_BOUND)
 	TRAPHANDLER_NOEC(illegal_opcode, T_ILLOP)
-	TRAPHANDLER_NOEC(device_not_availabel, T_DEVICE)
-
+	TRAPHANDLER_NOEC(device_not_available, T_DEVICE)
 	TRAPHANDLER(double_fault, T_DBLFLT)
 
 	TRAPHANDLER(invalid_tss, T_TSS)
@@ -61,8 +60,32 @@
 	TRAPHANDLER(aligment_check, T_ALIGN)
 	TRAPHANDLER_NOEC(machine_check, T_MCHK)
 	TRAPHANDLER_NOEC(simd_floating_point_error, T_SIMDERR)
+	TRAPHANDLER_NOEC(system_call, T_SYSCALL)
 
 /*
  * Lab 3: Your code here for _alltraps
  */
-	
+_alltraps:
+	/* push values to make the stack look like a struct Trapframe */
+	pushl	%ds
+	pushl	%es
+	/* push all regs in */
+	pushal
+
+	/* load GD_KD into %ds and %es */
+	/* notice that ds and es are 16 bits width */
+	movl	$GD_KD,	%eax
+	movw	%ax,	%ds
+	movw	%ax,	%es
+
+	/* pushl %esp to pass a pointer to the Trapframe
+	as an argument to trap() and call trap() */
+	pushl	%esp
+	call trap
+
+	/* pop the values pushed in steps 1-3 and iret*/
+	popl	%esp
+	popal
+	popl	%es
+	popl	%ds
+	iret

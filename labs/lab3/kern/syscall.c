@@ -78,7 +78,21 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	// Call the function corresponding to the 'syscallno' parameter.
 	// Return any appropriate return value.
 	// LAB 3: Your code here.
+	switch (syscallno)
+	{
+		case SYS_cputs:
+			sys_cputs((const char *)a1, a2);
+			return 0;
+		case SYS_cgetc:
+			return (int32_t)sys_cgetc();
+		case SYS_getenvid:
+			return (int32_t)sys_getenvid();
+		case SYS_env_destroy:
+			return (int32_t)sys_env_destroy((envid_t)a1);
+		default:	//NSYSCALLS means non-syscalls
+			return -E_INVAL;
+	}
 
-	panic("syscall not implemented");
+	//panic("syscall not implemented");
 }
 

@@ -313,6 +313,11 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	struct Elf *env_elf;
 	struct Proghdr *ph, *eph;
 	env_elf = (struct Elf *)binary;
+	// magic number check
+	if(env_elf->e_magic != ELF_MAGIC)
+	{
+		panic("load_icode(): Not a valid ELF!\n");
+	}	
 	// load each program segment (ignores ph flags)
 	// e_phoff means program header table offset
 	// the start position
@@ -320,6 +325,13 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	// the end position, e_phnum means the number of program
 	// header table entries
 	eph = ph+env_elf->e_phnum;
+	// Page Error will occur without this when using memmove and memset
+	// save old cr3, cr3 stores the page dir addr(pa)
+	unsigned int old_cr3 = rcr3();
+	// load env page dir into cr3
+	// if not, addressing will be wrong(Page Fault on memmove and memset),
+	// as addressing is tightly related to address. 
+	lcr3(PADDR(e->env_pgdir));
 	for (; ph < eph; ++ph)
 	{
 		// only load segments with ph->p_type == ELF_PROG_LOAD.
@@ -335,8 +347,11 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 			//Any remaining memory bytes should be cleared to zero.
 			// REMEMBER that ph->p_filesz <= ph->p_memsz.
 			memset((void *)(ph->p_va+ph->p_filesz), 0, ph->p_memsz-ph->p_filesz);
+	
 		}
 	}
+	// restore the old cr3
+	lcr3(old_cr3);
 	// Set the program's entry point.
 	e->env_tf.tf_eip = env_elf->e_entry;
 
@@ -501,7 +516,7 @@ env_run(struct Env *e)
 	// restore the environment's registers and
 	// drop into user mode in the environment.
 	env_pop_tf(&(e->env_tf));
-
-        //panic("env_run not yet implemented");
+	
+        	//panic("env_run not yet implemented");
 }
 
