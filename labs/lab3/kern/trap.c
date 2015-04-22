@@ -59,25 +59,27 @@ idt_init(void)
 	extern struct Segdesc gdt[];
 	
 	// LAB 3: Your code here.
-	extern void divide_error();
-	extern void debug_exception();
-	extern void nmi_interrupt();
-	extern void breakpoint();
-	extern void overflow();
-	extern void bound_check();
-	extern void illegal_opcode();
-	extern void device_not_available();
-	extern void double_fault();
-	extern void invalid_tss();
-	extern void segment_not_present();
-	extern void stack_exception();
-	extern void general_protection_fault();
-	extern void page_fault();
-	extern void floating_point_error();
-	extern void aligment_check();
-	extern void machine_check();
-	extern void simd_floating_point_error();
-	extern void system_call();
+	extern void idt_divide_error();
+	extern void idt_debug_exception();
+	extern void idt_nmi_interrupt();
+	// well, I originally call it "breakpoint()", but there should be an
+	// implemented inline function under the same name in "inc/x86.h"
+	extern void idt_breakpoint();
+	extern void idt_overflow();
+	extern void idt_bound_check();
+	extern void idt_illegal_opcode();
+	extern void idt_device_not_available();
+	extern void idt_double_fault();
+	extern void idt_invalid_tss();
+	extern void idt_segment_not_present();
+	extern void idt_stack_exception();
+	extern void idt_general_protection_fault();
+	extern void idt_page_fault();
+	extern void idt_floating_point_error();
+	extern void idt_aligment_check();
+	extern void idt_machine_check();
+	extern void idt_simd_floating_point_error();
+	extern void idt_system_call();
 
 	// #define SETGATE(gate, istrap, sel, off, dpl)
 	// gate: describes the info of gate, should be a struct.
@@ -86,27 +88,31 @@ idt_init(void)
 	// off: offset in code segment for interrupt/trap handler,
 	// which should be the handler function entry points.
 	// dpl: Descriptor Privilege Level, will be compared with cpl
-	SETGATE(idt[T_DIVIDE], 0, GD_KT, divide_error, 0);
-	SETGATE(idt[T_DEBUG], 0, GD_KT, debug_exception, 0);
-	SETGATE(idt[T_NMI], 0, GD_KT, nmi_interrupt, 0);
-	SETGATE(idt[T_BRKPT], 0, GD_KT, breakpoint, 3);
-	SETGATE(idt[T_OFLOW], 1, GD_KT, overflow, 3);
-	SETGATE(idt[T_BOUND], 1, GD_KT, bound_check, 3);
-	SETGATE(idt[T_ILLOP], 0, GD_KT, illegal_opcode, 0);
-	SETGATE(idt[T_DEVICE], 0, GD_KT, device_not_available, 0);
+	SETGATE(idt[T_DIVIDE], 0, GD_KT, idt_divide_error, 0);
+	SETGATE(idt[T_DEBUG], 0, GD_KT, idt_debug_exception, 0);
+	SETGATE(idt[T_NMI], 0, GD_KT, idt_nmi_interrupt, 0);
+	SETGATE(idt[T_BRKPT], 0, GD_KT, idt_breakpoint, 3);
+	SETGATE(idt[T_OFLOW], 1, GD_KT, idt_overflow, 3);
+	SETGATE(idt[T_BOUND], 1, GD_KT, idt_bound_check, 3);
+	// SETGATE(idt[T_OFLOW], 0, GD_KT, idt_overflow, 0);
+	// SETGATE(idt[T_BOUND], 0, GD_KT, idt_bound_check, 0);
+	SETGATE(idt[T_ILLOP], 0, GD_KT, idt_illegal_opcode, 0);
+	SETGATE(idt[T_DEVICE], 0, GD_KT, idt_device_not_available, 0);
 	// I just cannot set the gate's type to 0101B, which states a task gate
 	// Don't know why. May be modified later?
-	SETGATE(idt[T_DBLFLT], 0, GD_KT, double_fault, 0);
-	SETGATE(idt[T_TSS], 0, GD_KT, invalid_tss, 0);
-	SETGATE(idt[T_SEGNP], 0, GD_KT, segment_not_present, 0);
-	SETGATE(idt[T_STACK], 0, GD_KT, stack_exception, 0);
-	SETGATE(idt[T_GPFLT], 1, GD_KT, general_protection_fault, 0);
-	SETGATE(idt[T_PGFLT], 0, GD_KT, page_fault, 0);
-	SETGATE(idt[T_FPERR], 0, GD_KT, floating_point_error, 0);
-	SETGATE(idt[T_ALIGN], 0, GD_KT, aligment_check, 0);
-	SETGATE(idt[T_MCHK], 0, GD_KT, machine_check, 0);
-	SETGATE(idt[T_SIMDERR], 0, GD_KT, simd_floating_point_error, 0);
-	SETGATE(idt[T_SYSCALL], 1, GD_KT, system_call, 3);
+	SETGATE(idt[T_DBLFLT], 0, GD_KT, idt_double_fault, 0);
+	SETGATE(idt[T_TSS], 0, GD_KT, idt_invalid_tss, 0);
+	SETGATE(idt[T_SEGNP], 0, GD_KT, idt_segment_not_present, 0);
+	SETGATE(idt[T_STACK], 0, GD_KT, idt_stack_exception, 0);
+	SETGATE(idt[T_GPFLT], 1, GD_KT, idt_general_protection_fault, 0);
+	// SETGATE(idt[T_GPFLT], 0, GD_KT, idt_general_protection_fault, 0);
+	SETGATE(idt[T_PGFLT], 0, GD_KT, idt_page_fault, 0);
+	SETGATE(idt[T_FPERR], 0, GD_KT, idt_floating_point_error, 0);
+	SETGATE(idt[T_ALIGN], 0, GD_KT, idt_aligment_check, 0);
+	SETGATE(idt[T_MCHK], 0, GD_KT, idt_machine_check, 0);
+	SETGATE(idt[T_SIMDERR], 0, GD_KT, idt_simd_floating_point_error, 0);
+	SETGATE(idt[T_SYSCALL], 1, GD_KT, idt_system_call, 3);
+	// SETGATE(idt[T_SYSCALL], 0, GD_KT, idt_system_call, 3);
 
 	// Setup a TSS so that we get the right stack
 	// when we trap to the kernel.
@@ -170,12 +176,15 @@ trap_dispatch(struct Trapframe *tf)
 			monitor(tf);
 			return;
 		case T_SYSCALL:
-			// arrange for the return value to be
-			// passed back to the user process in %eax
+			// Generic system call: pass system call number in AX,
+			// up to five parameters in DX, CX, BX, DI, SI.
+			// Interrupt kernel with T_SYSCALL.
+			// According to lib/syscall.c
+			// Correct order or endless page fault
 			tf->tf_regs.reg_eax = syscall(tf->tf_regs.reg_eax,
-				tf->tf_regs.reg_ecx, tf->tf_regs.reg_edx,
-				tf->tf_regs.reg_ebx, tf->tf_regs.reg_esi,
-				tf->tf_regs.reg_edi);
+				tf->tf_regs.reg_edx, tf->tf_regs.reg_ecx,
+				tf->tf_regs.reg_ebx, tf->tf_regs.reg_edi,
+				tf->tf_regs.reg_esi);
 			return;
 	}
 

@@ -586,7 +586,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
 	// Fill this function in
 	// page table entry
-	pte_t *pt_addr;
+	pte_t *pte_addr;
 	// new_pg doesn't need an initialization, because
 	// it will be casted to the existing space
 	struct Page *new_pt;
@@ -598,12 +598,12 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 		// and page dir is a page itself, so PTE_ADDR is
 		// needed to get the addr of phys page va pointing to.
 		// that is the addr of page table
-		// remember, pt_addr is a ptr to pte
+		// remember, pte_addr is a ptr to pte
 		// we got ptr to pte through va, and got va through ptr to pte.
-		pt_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
+		pte_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
 		// now it's time to get final pa through va
-		// and remember, pt_addr is an array of pointer to phsy pages
-		return &pt_addr[PTX(va)];
+		// and remember, pte_addr is an array of pointer to phsy pages
+		return &pte_addr[PTX(va)];
 	}
 	else
 	{
@@ -626,8 +626,8 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 				// PTE_U must be here; or GP arises when debuggin user process
 				pgdir[PDX(va)] = page2pa(new_pt) | PTE_P | PTE_W | PTE_U;
 				// then the same with the condition when page table exists in the dir
-				pt_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
-				return &pt_addr[PTX(va)];
+				pte_addr = (pte_t *)KADDR(PTE_ADDR(pgdir[PDX(va)]));
+				return &pte_addr[PTX(va)];
 			}
 			else
 			{
@@ -662,8 +662,8 @@ page_insert(pde_t *pgdir, struct Page *pp, void *va, int perm)
 	// Fill this function in
 	// always create a new page table if there isn't
 	// which is "necessary, on demand" in the comment
-	pte_t *pt_addr = pgdir_walk(pgdir, va, 1);
-	if (pt_addr == NULL)
+	pte_t *pte_addr = pgdir_walk(pgdir, va, 1);
+	if (pte_addr == NULL)
 	{
 		return -E_NO_MEM;
 	}
@@ -671,18 +671,18 @@ page_insert(pde_t *pgdir, struct Page *pp, void *va, int perm)
 	{
 		// increase pp_ref as insertion succeeds
 		++(pp->pp_ref);
-		// REMEMBER, pt_addr is a ptr to pte
-		// *pt_addr will get the value addressed at pt_addr
+		// REMEMBER, pte_addr is a ptr to pte
+		// *pte_addr will get the value addressed at pte_addr
 		// already a page mapped at va, remove it
-		if ((*pt_addr & PTE_P) != 0)
+		if ((*pte_addr & PTE_P) != 0)
 		{
 			page_remove(pgdir, va);
 			// The TLB must be invalidated 
 			// if a page was formerly present at 'va'.
 			tlb_invalidate(pgdir, va);
 		}
-		// again, through pt_addr we should get pa
-		*pt_addr = page2pa(pp) | perm | PTE_P;
+		// again, through pte_addr we should get pa
+		*pte_addr = page2pa(pp) | perm | PTE_P;
 		return 0;
 	}
 }
@@ -703,7 +703,7 @@ boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, physaddr_t pa, int per
 	// Fill this function in
 	// better than int i; no worry about overflow.
 	unsigned int i;
-	pte_t *pt_addr;
+	pte_t *pte_addr;
 	// size in stack, no worry.
 	size = ROUNDUP(size, PGSIZE);
 	// so there comes the question
@@ -717,13 +717,13 @@ boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, physaddr_t pa, int per
 	for (i = 0; i < size; i += PGSIZE)
 	{
 		// get the page addr
-		pt_addr = pgdir_walk(pgdir, (void *)(la+i), 1);
-		if (pt_addr == NULL)
+		pte_addr = pgdir_walk(pgdir, (void *)(la+i), 1);
+		if (pte_addr == NULL)
 		{
 			panic("failed to map la to pa in boot_map_segment()");
 		}
 		// map the phsy addr
-		*pt_addr = (pa+i) | perm | PTE_P;
+		*pte_addr = (pa+i) | perm | PTE_P;
 	}
 }
 
@@ -742,8 +742,8 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
 	// never create a new page table
-	pte_t *pt_addr = pgdir_walk(pgdir, va, 0);
-	if (pt_addr == NULL)
+	pte_t *pte_addr = pgdir_walk(pgdir, va, 0);
+	if (pte_addr == NULL)
 	{
 		return NULL;
 	}
@@ -752,13 +752,13 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 		if (pte_store)
 		{
 			// be careful to read the header comment
-			*pte_store = pt_addr;
+			*pte_store = pte_addr;
 		}
-		// pt_addr is ptr to pte, not phsy page addr
+		// pte_addr is ptr to pte, not phsy page addr
 		// we need to get pa through ptr to pte, (* is okay)
 		// and then get PPN through pa (1), and get page addr
 		// through PPN (2); (1) and (2) are done by "pa2page"
-		return pa2page(*pt_addr);
+		return pa2page(*pte_addr);
 		// "pa2page(phsyaddr_t pa)" returns &pages[PPN(pa)];
 	}
 }
@@ -843,6 +843,32 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here. 
+	// check user privilege and boundary
+	// REMEMBER, pte_t mod PGSIZE = 0, and the lower bits
+	// describe the privileges of the page
+	// check all range
+	pte_t *pte_addr;
+	uintptr_t lva = (uintptr_t)ROUNDDOWN(va, PGSIZE);
+	uintptr_t rva = (uintptr_t)ROUNDUP(va+len, PGSIZE);
+	// rva is not included
+	for (; lva < rva; lva += PGSIZE)
+	{
+		// check boundary
+		// record the first erroneous virtual address
+		// so it cannot be outside the loop
+		if (lva >= ULIM)
+		{
+			user_mem_check_addr = lva;
+			return -E_FAULT;
+		}
+		pte_addr = pgdir_walk(env->env_pgdir, (void *)lva, 0);
+		// PTE_U has been added when called in "user_mem_assert()"
+		if (pte_addr == NULL || (*pte_addr & (perm | PTE_P)) != perm)
+		{
+			user_mem_check_addr = lva;
+			return -E_FAULT;
+		}
+	}
 
 	return 0;
 }

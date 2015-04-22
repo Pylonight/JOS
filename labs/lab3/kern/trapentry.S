@@ -40,27 +40,27 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
-	TRAPHANDLER_NOEC(divide_error, T_DIVIDE)
-	TRAPHANDLER_NOEC(debug_exception, T_DEBUG)
-	TRAPHANDLER_NOEC(nmi_interrupt, T_NMI)
-	TRAPHANDLER_NOEC(breakpoint, T_BRKPT)
-	TRAPHANDLER_NOEC(overflow, T_OFLOW)
-	TRAPHANDLER_NOEC(bound_check, T_BOUND)
-	TRAPHANDLER_NOEC(illegal_opcode, T_ILLOP)
-	TRAPHANDLER_NOEC(device_not_available, T_DEVICE)
-	TRAPHANDLER(double_fault, T_DBLFLT)
+	TRAPHANDLER_NOEC(idt_divide_error, T_DIVIDE)
+	TRAPHANDLER_NOEC(idt_debug_exception, T_DEBUG)
+	TRAPHANDLER_NOEC(idt_nmi_interrupt, T_NMI)
+	TRAPHANDLER_NOEC(idt_breakpoint, T_BRKPT)
+	TRAPHANDLER_NOEC(idt_overflow, T_OFLOW)
+	TRAPHANDLER_NOEC(idt_bound_check, T_BOUND)
+	TRAPHANDLER_NOEC(idt_illegal_opcode, T_ILLOP)
+	TRAPHANDLER_NOEC(idt_device_not_available, T_DEVICE)
+	TRAPHANDLER(idt_double_fault, T_DBLFLT)
 
-	TRAPHANDLER(invalid_tss, T_TSS)
-	TRAPHANDLER(segment_not_present, T_SEGNP)
-	TRAPHANDLER(stack_exception, T_STACK)
-	TRAPHANDLER(general_protection_fault, T_GPFLT)
-	TRAPHANDLER(page_fault, T_PGFLT)
+	TRAPHANDLER(idt_invalid_tss, T_TSS)
+	TRAPHANDLER(idt_segment_not_present, T_SEGNP)
+	TRAPHANDLER(idt_stack_exception, T_STACK)
+	TRAPHANDLER(idt_general_protection_fault, T_GPFLT)
+	TRAPHANDLER(idt_page_fault, T_PGFLT)
 
-	TRAPHANDLER_NOEC(floating_point_error, T_FPERR)
-	TRAPHANDLER(aligment_check, T_ALIGN)
-	TRAPHANDLER_NOEC(machine_check, T_MCHK)
-	TRAPHANDLER_NOEC(simd_floating_point_error, T_SIMDERR)
-	TRAPHANDLER_NOEC(system_call, T_SYSCALL)
+	TRAPHANDLER_NOEC(idt_floating_point_error, T_FPERR)
+	TRAPHANDLER(idt_aligment_check, T_ALIGN)
+	TRAPHANDLER_NOEC(idt_machine_check, T_MCHK)
+	TRAPHANDLER_NOEC(idt_simd_floating_point_error, T_SIMDERR)
+	TRAPHANDLER_NOEC(idt_system_call, T_SYSCALL)
 
 /*
  * Lab 3: Your code here for _alltraps

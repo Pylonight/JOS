@@ -515,7 +515,7 @@ env_run(struct Env *e)
 	// PART 2
 	// restore the environment's registers and
 	// drop into user mode in the environment.
-	env_pop_tf(&(e->env_tf));
+	env_pop_tf(&(curenv->env_tf));
 	
         	//panic("env_run not yet implemented");
 }
