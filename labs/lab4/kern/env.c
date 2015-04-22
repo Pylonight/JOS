@@ -73,6 +73,17 @@ void
 env_init(void)
 {
 	// LAB 3: Your code here.
+	// this function will initialize all of the Env structures
+	// in the envs array and add them to the env_free_list.
+	// just like page_init()
+	// REVERSE ORDER!
+	int i;
+	for (i = NENV-1; i >= 0; --i)
+	{
+		// "set  their env_ids to 0"
+		envs[i].env_id = 0;
+		LIST_INSERT_HEAD(&env_free_list, &envs[i], env_link);
+	}
 }
 
 //
@@ -111,6 +122,30 @@ env_setup_vm(struct Env *e)
 	//	env_pgdir's pp_ref!
 
 	// LAB 3: Your code here.
+	// this function will allocate a page directory for a new environment
+	// and initialize the kernel portion of the new environment's address space.
+	// increase pp_ref
+	++(p->pp_ref);
+	// Attention: need to clear the memory pointed by the page's va,
+	// as it holds the process's pg dir.
+	// page2kva is the combination of page2pa and KADDR
+	// what will happen if "memset" is commented out? have a try.
+	memset(page2kva(p), 0, PGSIZE);
+	// set e->env_pgdir to this pg's va
+	e->env_pgdir = page2kva(p);
+	// set e->env_cr3 to this pg's pa
+	e->env_cr3 = page2pa(p);
+	// REMEMBER! Any va above UTOP can not be accessed by user.
+	// The reason is that JOS shares a 4G vm.
+	// So just copy boot_pgdir to env_pgdir for this part.
+	// And UTOP equals UENVS
+	// Page directory and page table constants.
+	// NPDENTRIES = 1024	// page directory entries per page directory
+	// NPTENTRIES = 1024	// page table entries per page table
+	for (i = PDX(UTOP); i < NPDENTRIES; ++i)
+	{
+		e->env_pgdir[i] = boot_pgdir[i];
+	}
 
 	// VPT and UVPT map the env's own page table, with
 	// different permissions.
@@ -204,6 +239,27 @@ segment_alloc(struct Env *e, void *va, size_t len)
 	// Hint: It is easier to use segment_alloc if the caller can pass
 	//   'va' and 'len' values that are not page-aligned.
 	//   You should round va down, and round len up.
+	// this function will allocates and maps physical memory for an environment.
+	va = ROUNDDOWN(va, PGSIZE);
+	len = ROUNDUP(len, PGSIZE);
+	struct Page *new_pg;
+	int i;
+	for (i = 0; i < len; i += PGSIZE)
+	{
+		// allocate a new page
+		if (page_alloc(&new_pg) < 0)
+		{
+			panic("segment_alloc(): out of memory\n");
+		}
+		// must be e->env_pgdir, not pgdir
+		// it is allocated according to env pg dir, as it is allocating pages
+		// for user process env
+		// User, Writable
+		if (page_insert(e->env_pgdir, new_pg, va+i, PTE_U | PTE_W) < 0)
+		{
+			panic("segment_alloc(): page table cannot be allocated\n");
+		}
+	}
 }
 
 //
@@ -261,11 +317,60 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	//  What?  (See env_run() and env_pop_tf() below.)
 
 	// LAB 3: Your code here.
+	// Just to load each program segment into virtual memory
+	//  at the address specified in the ELF section header.
+	// only load segments with ph->p_type == ELF_PROG_LOAD.
+	struct Elf *env_elf;
+	struct Proghdr *ph, *eph;
+	env_elf = (struct Elf *)binary;
+	// magic number check
+	if(env_elf->e_magic != ELF_MAGIC)
+	{
+		panic("load_icode(): Not a valid ELF!\n");
+	}	
+	// load each program segment (ignores ph flags)
+	// e_phoff means program header table offset
+	// the start position
+	ph = (struct Proghdr *)((uint8_t *)(env_elf)+env_elf->e_phoff);
+	// the end position, e_phnum means the number of program
+	// header table entries
+	eph = ph+env_elf->e_phnum;
+	// Page Error will occur without this when using memmove and memset
+	// save old cr3, cr3 stores the page dir addr(pa)
+	unsigned int old_cr3 = rcr3();
+	// load env page dir into cr3
+	// if not, addressing will be wrong(Page Fault on memmove and memset),
+	// as addressing is tightly related to address. 
+	lcr3(PADDR(e->env_pgdir));
+	for (; ph < eph; ++ph)
+	{
+		// only load segments with ph->p_type == ELF_PROG_LOAD.
+		if (ph->p_type == ELF_PROG_LOAD)
+		{
+			// Each segment's virtual address can be found in ph->p_va
+			//  and its size in memory can be found in ph->p_memsz.
+			segment_alloc(e, (void *)ph->p_va, ph->p_memsz);
+			//  The ph->p_filesz bytes from the ELF binary, starting at
+			//  'binary + ph->p_offset', should be copied to virtual address
+			//  ph->p_va.
+			memmove((void *)ph->p_va, binary+ph->p_offset, ph->p_filesz);
+			//Any remaining memory bytes should be cleared to zero.
+			// REMEMBER that ph->p_filesz <= ph->p_memsz.
+			memset((void *)(ph->p_va+ph->p_filesz), 0, ph->p_memsz-ph->p_filesz);
+	
+		}
+	}
+	// restore the old cr3
+	lcr3(old_cr3);
+	// Set the program's entry point.
+	e->env_tf.tf_eip = env_elf->e_entry;
 
 	// Now map one page for the program's initial stack
 	// at virtual address USTACKTOP - PGSIZE.
 
 	// LAB 3: Your code here.
+	segment_alloc(e, (void *)(USTACKTOP-PGSIZE), PGSIZE);
+	//  All page protection bits should be user read/write for now.
 }
 
 //
@@ -282,6 +387,21 @@ void
 env_create(uint8_t *binary, size_t size)
 {
 	// LAB 3: Your code here.
+	// ONLY called during kernel initialization,
+	// before running the first user-mode environment.
+	// To allocate an environment with env_alloc and
+	// call load_icode load an ELF binary into it.
+	// about env_alloc(struct Env **newenv_store, envid_t parent_id):
+	// Allocates and initializes a new environment.
+	// On success, the new environment is stored in *newenv_store.
+	struct Env *env;
+	// The new env's parent ID is set to 0, as the first.
+	int env_alloc_info = env_alloc(&env, 0);
+	if (env_alloc_info < 0)
+	{
+		panic("env_alloc: %e", env_alloc_info);
+	}
+	load_icode(env, binary, size);
 }
 
 //
@@ -394,7 +514,20 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 	
 	// LAB 3: Your code here.
-
-        panic("env_run not yet implemented");
+	// To start a given environment running in user mode.
+	// PART 1
+	// switch, and the original status may not be stored as the function 
+	// NEVER RETURNS!
+	curenv = e;
+	// update its 'env_runs' counter
+	++(curenv->env_runs);
+	// switch to its address space
+	lcr3(PADDR(curenv->env_pgdir));
+	// PART 2
+	// restore the environment's registers and
+	// drop into user mode in the environment.
+	env_pop_tf(&(curenv->env_tf));
+	
+        	//panic("env_run not yet implemented");
 }
 

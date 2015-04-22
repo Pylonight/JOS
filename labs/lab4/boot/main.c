@@ -38,6 +38,11 @@ void readseg(uint32_t, uint32_t, uint32_t);
 void
 bootmain(void)
 {
+	// test "hello world" which is "he110 world" indeed
+	//unsigned int i = 0x00646c72;
+	//cprintf("H%x Wo%s", 57616, &i);
+	// well, but we don`t have a cprintf until after init. lol
+
 	struct Proghdr *ph, *eph;
 
 	// read 1st page off disk

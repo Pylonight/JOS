@@ -87,7 +87,7 @@ serial_init(void)
 // For information on PC parallel port programming, see the class References
 // page.
 
-// Stupid I/O delay routine necessitated by historical PC design flaws
+// Stupid I/O delay routine necessitated by historical PC design flaws. lol
 static void
 delay(void)
 {
@@ -152,9 +152,11 @@ void
 cga_putc(int c)
 {
 	// if no attribute given, then use black on white
+	// whether are 15-8 bits zero?If they are set 8,9,10 bit 1,If not continue.
 	if (!(c & ~0xFF))
-		c |= 0x0700;
+		c |= 0x0a00;
 
+	// whether are low 8 bits '\b','\n','\r','\t'?If they are,preform corresponding operation.
 	switch (c & 0xff) {
 	case '\b':
 		if (crt_pos > 0) {
@@ -175,6 +177,80 @@ cga_putc(int c)
 		cons_putc(' ');
 		cons_putc(' ');
 		break;
+	case '0':
+	case '1':
+	case '2':
+	case '3':
+	case '4':
+	case '5':
+	case '6':
+	case '7':
+	case '8':
+	case '9':
+		crt_buf[crt_pos++] = (c&0xf0ff)|0x0c00;
+		break;
+	case 'a':
+	case 'b':
+	case 'c':
+	case 'd':
+	case 'e':
+	case 'f':
+	case 'g':
+	case 'h':
+	case 'i':
+	case 'j':
+	case 'k':
+	case 'l':
+	case 'm':
+	case 'n':
+	case 'o':
+	case 'p':
+	case 'q':
+	case 'r':
+	case 's':
+	case 't':
+	case 'u':
+	case 'v':
+	case 'w':
+	case 'x':
+	case 'y':
+	case 'z':
+		crt_buf[crt_pos++] = (c&0xf0ff)|0x0900;
+		break;
+	case 'A':
+	case 'B':
+	case 'C':
+	case 'D':
+	case 'E':
+	case 'F':
+	case 'G':
+	case 'H':
+	case 'I':
+	case 'J':
+	case 'K':
+	case 'L':
+	case 'M':
+	case 'N':
+	case 'O':
+	case 'P':
+	case 'Q':
+	case 'R':
+	case 'S':
+	case 'T':
+	case 'U':
+	case 'V':
+	case 'W':
+	case 'X':
+	case 'Y':
+	case 'Z':
+		crt_buf[crt_pos++] = (c&0xf0ff)|0x0100;
+		break;
+	case '%':
+		crt_buf[crt_pos++] = (c&0xf0ff)|0x0e00;
+		break;
+	case '&':
+		crt_buf[crt_pos++] = (c&0xf0ff)|0x0d00;
+		break;
 	default:
 		crt_buf[crt_pos++] = c;		/* write the character */
 		break;
@@ -183,10 +259,12 @@ cga_putc(int c)
 	// What is the purpose of this?
 	if (crt_pos >= CRT_SIZE) {
 		int i;
-
+		// Move all chars on the screen above a line;(memcpy or memmove: memcpy(dst, src, size))[Comment this line, the screen will never roll for new info]
 		memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
+		// Set the bottom line empty;(0x0700 is for color using)[Comment out this line and the bottom line will be nearly the same as the above line]
 		for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
-			crt_buf[i] = 0x0700 | ' ';
+			crt_buf[i] = 0x0c00 | ' ';
+		// Fix the position of screen;[Comment out this line and the screen will turn pure black]
 		crt_pos -= CRT_COLS;
 	}
 
