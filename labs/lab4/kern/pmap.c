@@ -846,6 +846,12 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 	// check user privilege and boundary
 	// REMEMBER, pte_t mod PGSIZE = 0, and the lower bits
 	// describe the privileges of the page
+	// check the first addr to keep the output correct
+	if ((unsigned int)va >= ULIM)
+	{
+		user_mem_check_addr = (uintptr_t)va;
+		return -E_FAULT;
+	}
 	// check all range
 	pte_t *pte_addr;
 	uintptr_t lva = (uintptr_t)ROUNDDOWN(va, PGSIZE);
