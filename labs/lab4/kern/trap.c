@@ -279,6 +279,47 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 	
 	// LAB 4: Your code here.
+	if (curenv->env_pgfault_upcall != NULL)
+	{
+		struct UTrapframe *utf;
+		// when there is nested page fault, just push a blank word
+		// into stack before pushing an UTrapframe.
+		// When it is needed to check whether it is nested,
+		// just check whether the crrent stack stands between
+		// “UXSTACKTOP-PGSIZE” and “UXSTACKTOP-1”.
+		// current stack means "esp"
+		if ((unsigned int)tf->tf_esp >= UXSTACKTOP-PGSIZE
+			&& (unsigned int)tf->tf_esp < UXSTACKTOP)
+		{
+			// nested page fault, a blank word needed to save esp to
+			// switch recursively later to jump back to user code
+			// without visiting kernel after page_fault_handler
+			// see _pgfault_upcall
+			utf = (struct UTrapframe *)(tf->tf_esp-sizeof(struct UTrapframe)-4);
+		}
+		else
+		{
+			// the first page fault
+			utf = (struct UTrapframe *)(UXSTACKTOP-sizeof(struct UTrapframe));
+		}
+		// set up page fault stack frame on user excp stack
+		// Read processor's CR2 register to find the faulting address
+		// fault_va = rcr2();
+		utf->utf_fault_va = fault_va;
+		utf->utf_err = tf->tf_err;
+		utf->utf_regs = tf->tf_regs;
+		utf->utf_eip = tf->tf_eip;
+		utf->utf_eflags = tf->tf_eflags;
+		utf->utf_esp = tf->tf_esp;
+		//  To change what the user environment runs, modify 'curenv->env_tf'
+		//  (the 'tf' variable points at 'curenv->env_tf').
+		// Well, then why should we set such an argument?
+		// eip points to the next ins
+		tf->tf_eip = (uintptr_t)curenv->env_pgfault_upcall;
+		// to start executing on user excp stack
+		tf->tf_esp = (uintptr_t)utf;
+		env_run(curenv);
+	}
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",

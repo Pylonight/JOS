@@ -169,7 +169,21 @@ static int
 sys_env_set_pgfault_upcall(envid_t envid, void *func)
 {
 	// LAB 4: Your code here.
-	panic("sys_env_set_pgfault_upcall not implemented");
+	// Set the page fault upcall for 'envid' by modifying the corresponding struct
+	// Env's 'env_pgfault_upcall' field.  When 'envid' causes a page fault, the
+	// kernel will push a fault record onto the exception stack, then branch to
+	// 'func'.
+	struct Env *env;
+	// set envid2env's third argument to 1, which will check whether
+	// the current environment has permission to set envid's status.
+	if (envid2env(envid, &env, 1) < 0)
+	{
+		return -E_BAD_ENV;
+	}
+	env->env_pgfault_upcall = func;
+	return 0;
+
+	//panic("sys_env_set_pgfault_upcall not implemented");
 }
 
 // Allocate a page of memory and map it at 'va' with permission
@@ -409,13 +423,15 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		case SYS_exofork:
 			return sys_exofork();
 		case SYS_env_set_status:
-			return sys_env_set_status((envid_t) a1, (int)a2);
+			return sys_env_set_status((envid_t)a1, (int)a2);
 		case SYS_page_alloc:
-			return sys_page_alloc((envid_t) a1, (void *)a2, (int)a3);
+			return sys_page_alloc((envid_t)a1, (void *)a2, (int)a3);
 		case SYS_page_map:
-			return sys_page_map((envid_t) a1, (void *)a2, (envid_t) a3, (void *)a4, (int)a5);
+			return sys_page_map((envid_t)a1, (void *)a2, (envid_t) a3, (void *)a4, (int)a5);
 		case SYS_page_unmap:
-			return sys_page_unmap((envid_t) a1, (void *)a2);
+			return sys_page_unmap((envid_t)a1, (void *)a2);
+		case SYS_env_set_pgfault_upcall:
+			return sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2);
 		default:	//NSYSCALLS means non-syscalls
 			return -E_INVAL;
 	}

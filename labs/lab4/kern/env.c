@@ -514,6 +514,7 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 	
 	// LAB 3: Your code here.
+	// Note: if this is the first call to env_run, curenv is NULL.
 	// To start a given environment running in user mode.
 	// PART 1
 	// switch, and the original status may not be stored as the function 

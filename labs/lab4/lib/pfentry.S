@@ -64,16 +64,45 @@ _pgfault_upcall:
 	//   What registers are available for intermediate calculations?
 	//
 	// LAB 4: Your code here.
+	// ptr to UTF has been poped, it is UTrapframe now
+	// it means that esp points to fault_va now, esp -> fault_va
+	// eax, ecx, edx are saved-by-caller regs, use as wish
+	// while edx, esi, edi are saved-by-called regs, save before using
+	// and restore before leaving
+	// our eip
+	movl	40(%esp),	%eax
+	// esp, the trap-time stack to return to
+	movl	48(%esp),	%ecx
+	// set rip to be out eip
+	// there is only one op-num can be memory-accessing
+	movl	%eax,	-4(%ecx)
 
 	// Restore the trap-time registers.
 	// LAB 4: Your code here.
+	// esp -> fault_va
+	// skip fault_va and tf_err
+	addl	$8,	%esp
+	// esp -> trap-time edi
+	popal
 
 	// Restore eflags from the stack.
 	// LAB 4: Your code here.
+	// esp -> trap-time eip
+	addl	$4,	%esp
+	// esp -> trap-time eflags
+	// popfl defined in "inc/x86.h"
+	popfl
 
 	// Switch back to the adjusted trap-time stack.
 	// LAB 4: Your code here.
+	// esp -> trap-time esp
+	// as requested
+	popl	%esp
+	// esp -> the first argument
+	subl	$4,	%esp
 
 	// Return to re-execute the instruction that faulted.
 	// LAB 4: Your code here.
-
+	// esp -> rip
+	// ret will jump to rip, but esp must point to rip
+	ret
