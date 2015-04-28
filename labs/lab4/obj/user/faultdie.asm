@@ -2803,13 +2803,13 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
   800f51:	79 20                	jns    800f73 <set_pgfault_handler+0x53>
 			PTE_W | PTE_U | PTE_P)) < 0)
 		{
-			panic("set_pgfault_handler: %e", r);
+			panic("sys_page_alloc: %e", r);
   800f53:	89 44 24 0c          	mov    %eax,0xc(%esp)
   800f57:	c7 44 24 08 af 15 80 	movl   $0x8015af,0x8(%esp)
   800f5e:	00 
   800f5f:	c7 44 24 04 28 00 00 	movl   $0x28,0x4(%esp)
   800f66:	00 
-  800f67:	c7 04 24 c7 15 80 00 	movl   $0x8015c7,(%esp)
+  800f67:	c7 04 24 c2 15 80 00 	movl   $0x8015c2,(%esp)
   800f6e:	e8 69 00 00 00       	call   800fdc <_panic>
 			return;
 		}
@@ -2823,13 +2823,13 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
   800f83:	85 c0                	test   %eax,%eax
   800f85:	79 20                	jns    800fa7 <set_pgfault_handler+0x87>
 		{
-			panic("set_pgfault_handler: %e", r);
+			panic("sys_env_set_pgfault_upcall: %e", r);
   800f87:	89 44 24 0c          	mov    %eax,0xc(%esp)
-  800f8b:	c7 44 24 08 af 15 80 	movl   $0x8015af,0x8(%esp)
+  800f8b:	c7 44 24 08 d0 15 80 	movl   $0x8015d0,0x8(%esp)
   800f92:	00 
   800f93:	c7 44 24 04 2f 00 00 	movl   $0x2f,0x4(%esp)
   800f9a:	00 
-  800f9b:	c7 04 24 c7 15 80 00 	movl   $0x8015c7,(%esp)
+  800f9b:	c7 04 24 c2 15 80 00 	movl   $0x8015c2,(%esp)
   800fa2:	e8 35 00 00 00       	call   800fdc <_panic>
 
 		//panic("set_pgfault_handler not implemented");
@@ -2934,7 +2934,7 @@ _panic(const char *file, int line, const char *fmt,...)
   800fe9:	74 10                	je     800ffb <_panic+0x1f>
 		cprintf("%s: ", argv0);
   800feb:	89 44 24 04          	mov    %eax,0x4(%esp)
-  800fef:	c7 04 24 d5 15 80 00 	movl   $0x8015d5,(%esp)
+  800fef:	c7 04 24 f0 15 80 00 	movl   $0x8015f0,(%esp)
   800ff6:	e8 a0 f1 ff ff       	call   80019b <cprintf>
 	cprintf("user panic in %s at %s:%d: ", binaryname, file, line);
   800ffb:	8b 45 0c             	mov    0xc(%ebp),%eax
@@ -2943,7 +2943,7 @@ _panic(const char *file, int line, const char *fmt,...)
   801005:	89 44 24 08          	mov    %eax,0x8(%esp)
   801009:	a1 00 20 80 00       	mov    0x802000,%eax
   80100e:	89 44 24 04          	mov    %eax,0x4(%esp)
-  801012:	c7 04 24 da 15 80 00 	movl   $0x8015da,(%esp)
+  801012:	c7 04 24 f5 15 80 00 	movl   $0x8015f5,(%esp)
   801019:	e8 7d f1 ff ff       	call   80019b <cprintf>
 	vcprintf(fmt, ap);
   80101e:	8d 45 14             	lea    0x14(%ebp),%eax

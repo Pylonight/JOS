@@ -2896,13 +2896,13 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
   800f9d:	79 20                	jns    800fbf <set_pgfault_handler+0x53>
 			PTE_W | PTE_U | PTE_P)) < 0)
 		{
-			panic("set_pgfault_handler: %e", r);
+			panic("sys_page_alloc: %e", r);
   800f9f:	89 44 24 0c          	mov    %eax,0xc(%esp)
   800fa3:	c7 44 24 08 64 15 80 	movl   $0x801564,0x8(%esp)
   800faa:	00 
   800fab:	c7 44 24 04 28 00 00 	movl   $0x28,0x4(%esp)
   800fb2:	00 
-  800fb3:	c7 04 24 7c 15 80 00 	movl   $0x80157c,(%esp)
+  800fb3:	c7 04 24 77 15 80 00 	movl   $0x801577,(%esp)
   800fba:	e8 09 f5 ff ff       	call   8004c8 <_panic>
 			return;
 		}
@@ -2916,13 +2916,13 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
   800fcf:	85 c0                	test   %eax,%eax
   800fd1:	79 20                	jns    800ff3 <set_pgfault_handler+0x87>
 		{
-			panic("set_pgfault_handler: %e", r);
+			panic("sys_env_set_pgfault_upcall: %e", r);
   800fd3:	89 44 24 0c          	mov    %eax,0xc(%esp)
-  800fd7:	c7 44 24 08 64 15 80 	movl   $0x801564,0x8(%esp)
+  800fd7:	c7 44 24 08 88 15 80 	movl   $0x801588,0x8(%esp)
   800fde:	00 
   800fdf:	c7 44 24 04 2f 00 00 	movl   $0x2f,0x4(%esp)
   800fe6:	00 
-  800fe7:	c7 04 24 7c 15 80 00 	movl   $0x80157c,(%esp)
+  800fe7:	c7 04 24 77 15 80 00 	movl   $0x801577,(%esp)
   800fee:	e8 d5 f4 ff ff       	call   8004c8 <_panic>
 
 		//panic("set_pgfault_handler not implemented");

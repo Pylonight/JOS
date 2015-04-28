@@ -196,7 +196,7 @@ _panic(const char *file, int line, const char *fmt,...)
   800155:	74 10                	je     800167 <_panic+0x1f>
 		cprintf("%s: ", argv0);
   800157:	89 44 24 04          	mov    %eax,0x4(%esp)
-  80015b:	c7 04 24 c7 13 80 00 	movl   $0x8013c7,(%esp)
+  80015b:	c7 04 24 c4 13 80 00 	movl   $0x8013c4,(%esp)
   800162:	e8 e8 00 00 00       	call   80024f <cprintf>
 	cprintf("user panic in %s at %s:%d: ", binaryname, file, line);
   800167:	8b 45 0c             	mov    0xc(%ebp),%eax
@@ -205,7 +205,7 @@ _panic(const char *file, int line, const char *fmt,...)
   800171:	89 44 24 08          	mov    %eax,0x8(%esp)
   800175:	a1 00 20 80 00       	mov    0x802000,%eax
   80017a:	89 44 24 04          	mov    %eax,0x4(%esp)
-  80017e:	c7 04 24 cc 13 80 00 	movl   $0x8013cc,(%esp)
+  80017e:	c7 04 24 c9 13 80 00 	movl   $0x8013c9,(%esp)
   800185:	e8 c5 00 00 00       	call   80024f <cprintf>
 	vcprintf(fmt, ap);
   80018a:	8d 45 14             	lea    0x14(%ebp),%eax
@@ -426,7 +426,7 @@ printnum(void (*putch)(int, void*), void *putdat,
   800329:	89 44 24 04          	mov    %eax,0x4(%esp)
   80032d:	e8 8e 0e 00 00       	call   8011c0 <__umoddi3>
   800332:	89 7c 24 04          	mov    %edi,0x4(%esp)
-  800336:	0f be 80 e8 13 80 00 	movsbl 0x8013e8(%eax),%eax
+  800336:	0f be 80 e5 13 80 00 	movsbl 0x8013e5(%eax),%eax
   80033d:	89 04 24             	mov    %eax,(%esp)
   800340:	ff 55 e4             	call   *-0x1c(%ebp)
 }
@@ -868,7 +868,7 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
   800557:	75 23                	jne    80057c <vprintfmt+0x178>
 				printfmt(putch, putdat, "error %d", err);
   800559:	89 44 24 0c          	mov    %eax,0xc(%esp)
-  80055d:	c7 44 24 08 00 14 80 	movl   $0x801400,0x8(%esp)
+  80055d:	c7 44 24 08 fd 13 80 	movl   $0x8013fd,0x8(%esp)
   800564:	00 
   800565:	89 5c 24 04          	mov    %ebx,0x4(%esp)
   800569:	8b 7d 08             	mov    0x8(%ebp),%edi
@@ -891,7 +891,7 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 			else
 				printfmt(putch, putdat, "%s", p);
   80057c:	89 54 24 0c          	mov    %edx,0xc(%esp)
-  800580:	c7 44 24 08 09 14 80 	movl   $0x801409,0x8(%esp)
+  800580:	c7 44 24 08 06 14 80 	movl   $0x801406,0x8(%esp)
   800587:	00 
   800588:	89 5c 24 04          	mov    %ebx,0x4(%esp)
   80058c:	8b 7d 08             	mov    0x8(%ebp),%edi
@@ -920,7 +920,7 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
   8005b1:	8b 30                	mov    (%eax),%esi
 				p = "(null)";
   8005b3:	85 f6                	test   %esi,%esi
-  8005b5:	ba f9 13 80 00       	mov    $0x8013f9,%edx
+  8005b5:	ba f6 13 80 00       	mov    $0x8013f6,%edx
   8005ba:	0f 44 f2             	cmove  %edx,%esi
 			if (width > 0 && padc != '-')
   8005bd:	83 7d d4 00          	cmpl   $0x0,-0x2c(%ebp)
@@ -2883,13 +2883,13 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
   801001:	79 20                	jns    801023 <set_pgfault_handler+0x53>
 			PTE_W | PTE_U | PTE_P)) < 0)
 		{
-			panic("set_pgfault_handler: %e", r);
+			panic("sys_page_alloc: %e", r);
   801003:	89 44 24 0c          	mov    %eax,0xc(%esp)
   801007:	c7 44 24 08 4f 16 80 	movl   $0x80164f,0x8(%esp)
   80100e:	00 
   80100f:	c7 44 24 04 28 00 00 	movl   $0x28,0x4(%esp)
   801016:	00 
-  801017:	c7 04 24 67 16 80 00 	movl   $0x801667,(%esp)
+  801017:	c7 04 24 62 16 80 00 	movl   $0x801662,(%esp)
   80101e:	e8 25 f1 ff ff       	call   800148 <_panic>
 			return;
 		}
@@ -2903,13 +2903,13 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
   801033:	85 c0                	test   %eax,%eax
   801035:	79 20                	jns    801057 <set_pgfault_handler+0x87>
 		{
-			panic("set_pgfault_handler: %e", r);
+			panic("sys_env_set_pgfault_upcall: %e", r);
   801037:	89 44 24 0c          	mov    %eax,0xc(%esp)
-  80103b:	c7 44 24 08 4f 16 80 	movl   $0x80164f,0x8(%esp)
+  80103b:	c7 44 24 08 70 16 80 	movl   $0x801670,0x8(%esp)
   801042:	00 
   801043:	c7 44 24 04 2f 00 00 	movl   $0x2f,0x4(%esp)
   80104a:	00 
-  80104b:	c7 04 24 67 16 80 00 	movl   $0x801667,(%esp)
+  80104b:	c7 04 24 62 16 80 00 	movl   $0x801662,(%esp)
   801052:	e8 f1 f0 ff ff       	call   800148 <_panic>
 
 		//panic("set_pgfault_handler not implemented");
